@@ -1,5 +1,8 @@
-cmake_minimum_required (VERSION 4.2)
+cmake_minimum_required (VERSION 3.29)
 project (Graphics)
+
+# Generate compile_commands.json (for clangd, nvim, etc.)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # files that help find packages
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
@@ -150,63 +153,68 @@ function (add_slang_shader_target TARGET)
 endfunction()
 
 function (add_app TARGET_NAME)
-  cmake_parse_arguments (APP "" "SHADER" "SOURCES;LIBS;TEXTURES;MODELS" ${ARGN})
+    cmake_parse_arguments (APP "" "SHADER" "SOURCES;LIBS;TEXTURES;MODELS" ${ARGN})
 
-  add_executable (${TARGET_NAME} ${APP_SOURCES})
-  set_target_properties (${TARGET_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${TARGET_NAME})
-  set_target_properties (${TARGET_NAME} PROPERTIES CXX_STANDARD 20)
+    add_executable (${TARGET_NAME} ${APP_SOURCES})
 
-  target_link_libraries (${TARGET_NAME} Vulkan::cppm glfw)
-  target_include_directories (${TARGET_NAME} PRIVATE ${STB_INCLUDEDIR} "${CMAKE_SOURCE_DIR}/include")
-
-  if(ENABLE_CPP20_MODULE)
-    target_compile_definitions(${TARGET_NAME} PRIVATE USE_CPP20_MODULES=1)
-  endif()
-
-  target_compile_definitions(${TARGET_NAME} PRIVATE VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS)
-
-  if(WIN32 AND ${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-    set_target_properties(${TARGET_NAME} PROPERTIES
-      VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${TARGET_NAME}")
-  endif()
-
-  # shaders
-  if (DEFINED APP_SHADER)
-    set (SHADER_TARGET ${TARGET_NAME}_shader)
-    file (GLOB SHADER_SOURCES
-      "${APP_SHADER}.frag"
-      "${APP_SHADER}.vert"
-      "${APP_SHADER}.comp"
+    set_target_properties (
+        ${TARGET_NAME} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${TARGET_NAME}
     )
-    add_shaders_target (${SHADER_TARGET} CHAPTER_NAME ${TARGET_NAME} SOURCES ${SHADER_SOURCES})
-    add_dependencies (${TARGET_NAME} ${SHADER_TARGET})
+    set_target_properties (${TARGET_NAME} PROPERTIES CXX_STANDARD 20)
+    target_link_libraries (${TARGET_NAME} Vulkan::cppm glfw)
+    target_include_directories (${TARGET_NAME} PRIVATE ${STB_INCLUDEDIR} "${CMAKE_SOURCE_DIR}/include")
 
-    set (SLANG_TARGET ${TARGET_NAME}_slang_shader)
-    file (GLOB SHADER_SLANG_SOURCES "${APP_SHADER}.slang")
-    if(SHADER_SLANG_SOURCES)
-      add_slang_shader_target (${SLANG_TARGET} CHAPTER_NAME ${TARGET_NAME} SOURCES ${SHADER_SLANG_SOURCES})
-      add_dependencies (${TARGET_NAME} ${SLANG_TARGET})
+    if(ENABLE_CPP20_MODULE)
+        target_compile_definitions(${TARGET_NAME} PRIVATE USE_CPP20_MODULES=1)
     endif()
-  endif ()
 
-  if (DEFINED APP_LIBS)
-    target_link_libraries (${TARGET_NAME} ${APP_LIBS})
-  endif ()
+    target_compile_definitions(${TARGET_NAME} PRIVATE VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS)
 
-  if (DEFINED APP_MODELS)
-    list(TRANSFORM APP_MODELS PREPEND "${CMAKE_SOURCE_DIR}/assets/")
-    file (COPY ${APP_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${TARGET_NAME}/models)
-  endif ()
+    if(WIN32 AND ${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+        set_target_properties(${TARGET_NAME} PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${TARGET_NAME}")
+    endif()
 
-  if (DEFINED APP_TEXTURES)
-    list(TRANSFORM APP_TEXTURES PREPEND "${CMAKE_SOURCE_DIR}/assets/")
-    file (COPY ${APP_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${TARGET_NAME}/textures)
-  endif ()
+    # shaders
+    if (DEFINED APP_SHADER)
+        set (SHADER_TARGET ${TARGET_NAME}_shader)
+        file (GLOB SHADER_SOURCES
+            "${APP_SHADER}.frag"
+            "${APP_SHADER}.vert"
+            "${APP_SHADER}.comp"
+        )
+        add_shaders_target (${SHADER_TARGET} CHAPTER_NAME ${TARGET_NAME} SOURCES ${SHADER_SOURCES})
+        add_dependencies (${TARGET_NAME} ${SHADER_TARGET})
+
+        set (SLANG_TARGET ${TARGET_NAME}_slang_shader)
+        file (GLOB SHADER_SLANG_SOURCES "${APP_SHADER}.slang")
+
+        if(SHADER_SLANG_SOURCES)
+            add_slang_shader_target (${SLANG_TARGET} CHAPTER_NAME ${TARGET_NAME} SOURCES ${SHADER_SLANG_SOURCES})
+            add_dependencies (${TARGET_NAME} ${SLANG_TARGET})
+        endif()
+    endif ()
+
+    if (DEFINED APP_LIBS)
+        target_link_libraries (${TARGET_NAME} ${APP_LIBS})
+    endif ()
+
+    if (DEFINED APP_MODELS)
+        list(TRANSFORM APP_MODELS PREPEND "${CMAKE_SOURCE_DIR}/assets/")
+        file (COPY ${APP_MODELS} DESTINATION ${CMAKE_BINARY_DIR}/${TARGET_NAME}/models)
+    endif ()
+
+    if (DEFINED APP_TEXTURES)
+        list(TRANSFORM APP_TEXTURES PREPEND "${CMAKE_SOURCE_DIR}/assets/")
+        file (COPY ${APP_TEXTURES} DESTINATION ${CMAKE_BINARY_DIR}/${TARGET_NAME}/textures)
+    endif ()
 endfunction ()
+
 add_app(Graphics
   SOURCES
     src/main.cpp
+    src/Renderer.cpp
   SHADER
     "${CMAKE_SOURCE_DIR}/shaders/main"
 )
