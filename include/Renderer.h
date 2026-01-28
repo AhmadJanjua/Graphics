@@ -8,18 +8,30 @@ import vulkan_hpp;
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <cstdint>
 class Renderer {
 public:
     void run();
 
 private:
     void initWindow();
+
     void initVulkan();
+    void createInstance();
+    void setupDebugMessenger();
+
     void mainLoop();
+    
     void cleanup();
 
-    const uint32_t HEIGHT = 1000;
-    const uint32_t WIDTH = 1000;
+
     GLFWwindow* window = nullptr;
+
+    const std::vector<char const*> validation_layers = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    vk::raii::Context context;
+    vk::raii::Instance instance = nullptr;
+    vk::raii::DebugUtilsMessengerEXT debug_messenger = nullptr;
+
 };

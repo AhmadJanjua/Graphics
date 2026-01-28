@@ -29,3 +29,7 @@ This document is mainly for me to keep track of important concepts.
 - This project makes heavy use of Vulkan RAII functions to simplify resource management
 - Otherwise we would need to VkCreate/VkAllocate and VkFree/VkDestroy resources as needed
 
+
+# Instance
+- this defines the vulkan library
+- to use RAII we must use api < 1.4
