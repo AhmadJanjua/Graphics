@@ -19,6 +19,7 @@ private:
     void createInstance();
     void setupDebugMessenger();
     void pickPhysicalDevice();
+    void createLogicalDevice();
 
     void mainLoop();
     
@@ -30,10 +31,18 @@ private:
     const std::vector<char const*> validation_layers = {
         "VK_LAYER_KHRONOS_validation"
     };
+    const std::vector<const char *> device_extensions = {
+        vk::KHRSwapchainExtensionName
+    };
+
 
     vk::raii::Context context;
     vk::raii::Instance instance = nullptr;
-    vk::raii::DebugUtilsMessengerEXT debug_messenger = nullptr;
-    vk::raii::PhysicalDevice physical_device = nullptr;
 
+    vk::raii::DebugUtilsMessengerEXT debug_messenger = nullptr;
+
+    vk::raii::PhysicalDevice physical_device = nullptr;
+    vk::raii::Device logical_device = nullptr;
+
+    vk::raii::Queue gfx_queue = nullptr;
 };

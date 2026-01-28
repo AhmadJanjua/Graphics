@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -48,6 +49,7 @@ void Renderer::initVulkan() {
    createInstance();
    setupDebugMessenger();
    pickPhysicalDevice();
+   createLogicalDevice();
 }
 
 void Renderer::createInstance() {
@@ -174,10 +176,6 @@ void Renderer::setupDebugMessenger() {
 }
 
 void Renderer::pickPhysicalDevice() {
-    std::vector<const char *> required_extensions = {
-        vk::KHRSwapchainExtensionName
-    };
-
     auto devices = instance.enumeratePhysicalDevices();
 
     if (devices.empty()) {
@@ -214,7 +212,7 @@ void Renderer::pickPhysicalDevice() {
         ) {
             score = 0;
         }
-        for (auto &required : required_extensions) {
+        for (auto &required : device_extensions) {
             if (std::ranges::none_of(
                 extensions,
                 [required](auto const &supported) {
@@ -243,6 +241,49 @@ void Renderer::pickPhysicalDevice() {
     }
 
     physical_device = scored_devices.rbegin()->second;
+}
+
+void Renderer::createLogicalDevice() {
+   auto family_properties = physical_device.getQueueFamilyProperties();
+
+   // find graphics queue family
+   auto gfx_property = std::ranges::find_if(
+            family_properties,
+            [](const auto& property) {
+                return (property.queueFlags & vk::QueueFlagBits::eGraphics) != vk::QueueFlags(0);
+            });
+   if (gfx_property == family_properties.end()) {
+       throw std::runtime_error("No graphics queue family found");
+   }
+   uint32_t gfx_idx = std::distance(family_properties.begin(), gfx_property);
+
+	vk::StructureChain<
+        vk::PhysicalDeviceFeatures2,
+        vk::PhysicalDeviceVulkan13Features,
+        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+    > feature_chain = {
+        {},
+		{.dynamicRendering = true},
+		{.extendedDynamicState = true}
+	};
+
+   float priority = 0.5f;
+   vk::DeviceQueueCreateInfo queue_info = {
+       .queueFamilyIndex = gfx_idx,
+       .queueCount       = 1,
+       .pQueuePriorities = &priority
+   };
+
+   vk::DeviceCreateInfo device_info = {
+       .pNext = &feature_chain.get<vk::PhysicalDeviceFeatures2>(),
+       .queueCreateInfoCount    = 1,
+       .pQueueCreateInfos       = &queue_info,
+       .enabledExtensionCount   = static_cast<uint32_t>(device_extensions.size()),
+       .ppEnabledExtensionNames = device_extensions.data()
+   };
+
+   logical_device = vk::raii::Device(physical_device, device_info);
+   gfx_queue = vk::raii::Queue(logical_device, gfx_idx, 0);
 }
 
 void Renderer::mainLoop() {
