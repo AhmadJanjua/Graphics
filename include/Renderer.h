@@ -18,6 +18,7 @@ private:
     void initVulkan();
     void createInstance();
     void setupDebugMessenger();
+    void pickPhysicalDevice();
 
     void mainLoop();
     
@@ -33,5 +34,6 @@ private:
     vk::raii::Context context;
     vk::raii::Instance instance = nullptr;
     vk::raii::DebugUtilsMessengerEXT debug_messenger = nullptr;
+    vk::raii::PhysicalDevice physical_device = nullptr;
 
 };
