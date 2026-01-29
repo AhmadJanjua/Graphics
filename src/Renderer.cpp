@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include "vulkan/vulkan.hpp"
+#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -10,16 +11,6 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
-
-// ----- CONSTANTS
-constexpr uint32_t HEIGHT = 1000;
-constexpr uint32_t WIDTH = 1000;
-#ifdef NDEBUG
-    constexpr bool ENABLE_VALIDATION = false;
-#else
-    constexpr bool ENABLE_VALIDATION = true;
-#endif
-
 
 // ----- PUBLIC
 void Renderer::run() {
@@ -35,8 +26,12 @@ void Renderer::initWindow() {
         throw std::runtime_error("GLFW failed to initialize");
     }
 
-    glfwWindowHint(GLFW_CURSOR_HIDDEN, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    if (ENABLE_VALIDATION) {
+        std::cerr << "GLFW platform: " << glfwGetPlatform() << "\n";
+    }
+
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     window = glfwCreateWindow(WIDTH, HEIGHT, "Graphics App", nullptr, nullptr);
 
@@ -48,6 +43,7 @@ void Renderer::initWindow() {
 void Renderer::initVulkan() {
    createInstance();
    setupDebugMessenger();
+   createSurface();
    pickPhysicalDevice();
    createLogicalDevice();
 }
@@ -70,11 +66,11 @@ void Renderer::createInstance() {
     auto supported_layers = context.enumerateInstanceLayerProperties();
 
     if (ENABLE_VALIDATION) {
-        std::cout << "Supported layers:" << std::endl;
+        std::cerr << "Supported layers:" << std::endl;
         for (auto &layer : supported_layers) {
-            std::cout << "-\t" << layer.layerName << std::endl;
+            std::cerr << "-\t" << layer.layerName << std::endl;
         }
-        std::cout << std::endl;
+        std::cerr << std::endl;
     }
 
     for (auto const &required : required_layers) {
@@ -104,11 +100,11 @@ void Renderer::createInstance() {
     auto supported_extensions = context.enumerateInstanceExtensionProperties();
 
     if (ENABLE_VALIDATION) {
-        std::cout << "Available Extensions:" << std::endl;
+        std::cerr << "Available Extensions:" << std::endl;
         for (const auto &extension : supported_extensions) {
-            std::cout << "-\t" << extension.extensionName << std::endl;
+            std::cerr << "-\t" << extension.extensionName << std::endl;
         }
-        std::cout << std::endl;
+        std::cerr << std::endl;
     }
 
     for (auto const& required : required_extensions) {
@@ -175,6 +171,21 @@ void Renderer::setupDebugMessenger() {
     debug_messenger = instance.createDebugUtilsMessengerEXT(debug_create_info);
 }
 
+void Renderer::createSurface() {
+    // convert c -> c++ binding
+    VkSurfaceKHR _surface;
+    auto result = glfwCreateWindowSurface(*instance, window, nullptr, &_surface);
+
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error(
+                "Failed to create surface with error code: "
+                + std::to_string(result)
+        );
+    }
+
+    surface = vk::raii::SurfaceKHR(instance, _surface);
+}
+
 void Renderer::pickPhysicalDevice() {
     auto devices = instance.enumeratePhysicalDevices();
 
@@ -198,12 +209,9 @@ void Renderer::pickPhysicalDevice() {
         score += properties.limits.maxImageDimension2D;
 
         // --- Compatibility
-        if (!features.geometryShader) {
-            score = 0;
-        }
-        if (properties.apiVersion < VK_API_VERSION_1_4) {
-            score = 0;
-        }
+        if (!features.geometryShader) score = 0;
+        if (properties.apiVersion < VK_API_VERSION_1_4) score = 0;
+
         if (std::ranges::none_of(
             queue_families,
             [](auto const& family) {
@@ -225,7 +233,7 @@ void Renderer::pickPhysicalDevice() {
         }
 
         if (ENABLE_VALIDATION) {
-            std::cout
+            std::cerr
                 << "Physical Device: " << properties.deviceName
                 << "\tScore: " << score
                 << std::endl;
@@ -246,22 +254,39 @@ void Renderer::pickPhysicalDevice() {
 void Renderer::createLogicalDevice() {
    auto family_properties = physical_device.getQueueFamilyProperties();
 
-   // find graphics queue family
-   auto gfx_property = std::ranges::find_if(
-            family_properties,
-            [](const auto& property) {
-                return (property.queueFlags & vk::QueueFlagBits::eGraphics) != vk::QueueFlags(0);
-            });
-   if (gfx_property == family_properties.end()) {
-       throw std::runtime_error("No graphics queue family found");
-   }
-   uint32_t gfx_idx = std::distance(family_properties.begin(), gfx_property);
+   const uint32_t max_idx = family_properties.size();
+   uint32_t gfx_idx = max_idx;
+   uint32_t pres_idx = max_idx;
 
-	vk::StructureChain<
+   // try to find queue that can do both graphics and presentation
+   // fallback is using the first different queues that support these properties
+   for (uint32_t i = 0; i < max_idx; i++) {
+       bool valid_gfx = bool(family_properties[i].queueFlags & vk::QueueFlagBits::eGraphics);
+       bool valid_pres = physical_device.getSurfaceSupportKHR(i, *surface);
+
+       if (valid_gfx && valid_pres) {
+           gfx_idx = i;
+           pres_idx = i;
+           break;
+       } else if (valid_gfx && gfx_idx == max_idx) {
+           gfx_idx = i;
+       } else if (valid_pres && pres_idx == max_idx) {
+           pres_idx = i;
+       }
+   }
+
+   if (gfx_idx == max_idx) {
+       throw std::runtime_error("No graphics queue available");
+   }
+   if (pres_idx == max_idx) {
+       throw std::runtime_error("No presentation queue available");
+   }
+
+   vk::StructureChain<
         vk::PhysicalDeviceFeatures2,
         vk::PhysicalDeviceVulkan13Features,
-        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
-    > feature_chain = {
+        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+    feature_chain = {
         {},
 		{.dynamicRendering = true},
 		{.extendedDynamicState = true}
@@ -284,6 +309,7 @@ void Renderer::createLogicalDevice() {
 
    logical_device = vk::raii::Device(physical_device, device_info);
    gfx_queue = vk::raii::Queue(logical_device, gfx_idx, 0);
+   pres_queue = vk::raii::Queue(logical_device, pres_idx, 0);
 }
 
 void Renderer::mainLoop() {

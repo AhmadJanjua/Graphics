@@ -29,7 +29,43 @@ This document is mainly for me to keep track of important concepts.
 - This project makes heavy use of Vulkan RAII functions to simplify resource management
 - Otherwise we would need to VkCreate/VkAllocate and VkFree/VkDestroy resources as needed
 
-
 # Instance
 - this defines the vulkan library
-- to use RAII we must use api < 1.4
+- to use RAII we must use api >= 1.4
+
+# Validation Layer
+- To ensure low overhead, validation needs to implemented by the use
+- the layer can display
+    - evaluate the parameters
+    - track object lifecycle
+    - logging to STDIO 
+    - allows profiling and replaying
+- Can use lunarG validation layer to save time
+    - only works if the user has the sdk installed
+
+# Physical Devices
+- Vulkan shows all the available devices that support it 
+- also allows you to evaluate available hardware and select what is best
+
+# Queue Families
+- removes the abstraction of jobs submitted to the GPU
+- exposes the different engines available to you
+- queues for 
+    - graphics
+    - compute
+    - transfer
+    - presentation 
+- you can parse devices to see if it supports what you're looking for and grade the hardware based on that
+
+# Logical Devices and Queues  
+- These are software level instances of the actual hardware 
+- to gain an instance of hardware and available queues on the hardware you need to describe what you will use from them
+- then you are given an instance of the devices to send information to
+
+# Window Surface
+- vulkan is windowing system agnostic
+- must be tethered to a windowing system
+- these are instance level extensions that have been enabled when we created an instance of vulkan
+- additionally we must ensure to make a presentation queue to present to the surface
+
+
