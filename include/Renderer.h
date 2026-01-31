@@ -32,7 +32,7 @@ private:
     void pickPhysicalDevice();
     void createLogicalDevice();
     void createSwapChain();
-    vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities);
+    void createImageView();
 
     void mainLoop();
     
@@ -63,4 +63,5 @@ private:
     vk::Extent2D swap_extent;
     vk::SurfaceFormatKHR swap_format;
     std::vector<vk::Image> swap_images;
+    std::vector<vk::raii::ImageView> swap_image_views;
 };

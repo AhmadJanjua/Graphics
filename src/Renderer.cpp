@@ -2,6 +2,7 @@
 #include "vulkan/vulkan.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -12,6 +13,94 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
+// ----- HELPER FUNCTIONS
+VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCB(
+        vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
+        vk::DebugUtilsMessageTypeFlagsEXT type,
+        const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
+        void *
+) {
+    if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError ||
+        severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+    ) {
+		std::cerr
+            << "validation layer: type " << to_string(type)
+            << " msg: " << pCallbackData->pMessage
+            << std::endl;
+	}
+	return vk::False;
+}
+
+uint32_t minSwapImgs(vk::SurfaceCapabilitiesKHR const &capabilities) {
+    const auto max_cap = capabilities.maxImageCount;
+    const auto min_cap = capabilities.minImageCount;
+
+    auto min_img = std::max(3u, min_cap);
+
+    if (0 < max_cap && max_cap < min_img) {
+        min_img = max_cap;
+    }
+
+    return min_img;
+}
+
+vk::SurfaceFormatKHR pickSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const &available) {
+    assert(!available.empty());
+
+    const auto fmt_iter = std::ranges::find_if(
+        available,
+        [](const auto &fmt) {
+            return fmt.format == vk::Format::eB8G8R8A8Srgb &&
+                   fmt.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; 
+        }
+    );
+
+    return fmt_iter != available.end() ? *fmt_iter : available[0];
+}
+
+vk::PresentModeKHR pickSwapPresentMode(const std::vector<vk::PresentModeKHR> &available) {
+    assert(std::ranges::any_of(
+        available,
+        [](auto mode) {
+            return mode == vk::PresentModeKHR::eFifo;
+        }
+    ));
+
+    if (std::ranges::any_of(
+        available,
+        [](const auto mode) {
+            return vk::PresentModeKHR::eMailbox == mode; 
+        })
+    ) {
+        return vk::PresentModeKHR::eMailbox;
+    }
+
+    return vk::PresentModeKHR::eFifo;
+}
+
+vk::Extent2D pickSwapExtent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR &capabilities) {
+    if (capabilities.currentExtent.width != 0xFFFFFFFF) {
+        return capabilities.currentExtent;
+    }
+
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    return {
+        std::clamp<uint32_t>(
+            width,
+            capabilities.minImageExtent.width,
+            capabilities.maxImageExtent.width
+        ),
+        std::clamp<uint32_t>(
+            height,
+            capabilities.minImageExtent.height,
+            capabilities.maxImageExtent.height
+        )
+    };
+}
+
+
 // ----- PUBLIC
 void Renderer::run() {
     initWindow();
@@ -19,6 +108,7 @@ void Renderer::run() {
     mainLoop();
     cleanup();
 }
+
 
 // ----- PRIVATE
 void Renderer::initWindow() {
@@ -46,6 +136,8 @@ void Renderer::initVulkan() {
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+    createSwapChain();
+    createImageView();
 }
 
 void Renderer::createInstance() {
@@ -132,22 +224,6 @@ void Renderer::createInstance() {
     instance = vk::raii::Instance(context, create_info);
 }
 
-VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCB(
-        vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-        vk::DebugUtilsMessageTypeFlagsEXT type,
-        const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
-        void *
-) {
-    if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError ||
-        severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
-    ) {
-		std::cerr
-            << "validation layer: type " << to_string(type)
-            << " msg: " << pCallbackData->pMessage
-            << std::endl;
-	}
-	return vk::False;
-}
 
 void Renderer::setupDebugMessenger() {
     if (!ENABLE_VALIDATION) return;
@@ -302,85 +378,15 @@ void Renderer::createLogicalDevice() {
     queue = vk::raii::Queue(logical_device, queue_idx, 0);
 }
 
-uint32_t chooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &capabilities) {
-    const auto max_cap = capabilities.maxImageCount;
-    const auto min_cap = capabilities.minImageCount;
-
-    auto min_img = std::max(3u, min_cap);
-
-    if (0 < max_cap && max_cap < min_img) {
-        min_img = max_cap;
-    }
-
-    return min_img;
-}
-
-vk::SurfaceFormatKHR chooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const &available) {
-    assert(!available.empty());
-
-    const auto fmt_iter = std::ranges::find_if(
-        available,
-        [](const auto &fmt) {
-            return fmt.format == vk::Format::eB8G8R8A8Srgb &&
-                   fmt.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; 
-        }
-    );
-
-    return fmt_iter != available.end() ? *fmt_iter : available[0];
-}
-
-vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR> &available) {
-    assert(std::ranges::any_of(
-        available,
-        [](auto mode) {
-            return mode == vk::PresentModeKHR::eFifo;
-        }
-    ));
-
-    if (std::ranges::any_of(
-        available,
-        [](const auto mode) {
-            return vk::PresentModeKHR::eMailbox == mode; 
-        })
-    ) {
-        return vk::PresentModeKHR::eMailbox;
-    }
-
-    return vk::PresentModeKHR::eFifo;
-}
-
-vk::Extent2D Renderer::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities) {
-    if (capabilities.currentExtent.width != 0xFFFFFFFF) {
-        return capabilities.currentExtent;
-    }
-
-
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-
-    return {
-        std::clamp<uint32_t>(
-            width,
-            capabilities.minImageExtent.width,
-            capabilities.maxImageExtent.width
-        ),
-        std::clamp<uint32_t>(
-            height,
-            capabilities.minImageExtent.height,
-            capabilities.maxImageExtent.height
-        )
-    };
-}
-
 void Renderer::createSwapChain() {
     auto surface_cap = physical_device.getSurfaceCapabilitiesKHR(*surface);
     auto surface_fmt = physical_device.getSurfaceFormatsKHR(*surface);
     auto surface_pres = physical_device.getSurfacePresentModesKHR(*surface);
 
-    swap_extent = chooseSwapExtent(surface_cap);
-    swap_format = chooseSwapSurfaceFormat(surface_fmt);
-    auto swap_img_count = chooseSwapMinImageCount(surface_cap);
-    auto swap_pres_mode = chooseSwapPresentMode(surface_pres);
+    swap_extent = pickSwapExtent(window, surface_cap);
+    swap_format = pickSwapSurfaceFormat(surface_fmt);
+    auto swap_img_count = minSwapImgs(surface_cap);
+    auto swap_pres_mode = pickSwapPresentMode(surface_pres);
 
     vk::SwapchainCreateInfoKHR swap_info {
         .surface          = *surface,
@@ -399,6 +405,21 @@ void Renderer::createSwapChain() {
 
 	swap_chain = vk::raii::SwapchainKHR(logical_device, swap_info);
 	swap_images = swap_chain.getImages();
+}
+
+void Renderer::createImageView() {
+    assert(swap_image_views.empty());
+
+    vk::ImageViewCreateInfo view_info = {
+        .viewType = vk::ImageViewType::e2D,
+        .format = swap_format.format,
+        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+    };
+
+    for (auto& image : swap_images) {
+		view_info.image = image;
+		swap_image_views.emplace_back(logical_device, view_info);
+	}
 }
 
 void Renderer::mainLoop() {

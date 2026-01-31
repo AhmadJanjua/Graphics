@@ -72,3 +72,6 @@ This document is mainly for me to keep track of important concepts.
 - no default framebuffer -> implemented via swap chain 
 - server specific gpus may not have display capabilities, hence no swap chain extension 
 
+# Image View 
+- to use images in the swap chain we need to create an image view
+- image view describes what portion of the image is viewed. 
