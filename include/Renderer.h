@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan/vulkan.hpp"
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
@@ -30,6 +31,8 @@ private:
     void createSurface();
     void pickPhysicalDevice();
     void createLogicalDevice();
+    void createSwapChain();
+    vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities);
 
     void mainLoop();
     
@@ -54,7 +57,10 @@ private:
     vk::raii::PhysicalDevice physical_device = nullptr;
     vk::raii::Device logical_device = nullptr;
 
-    vk::raii::Queue gfx_queue = nullptr;
-    vk::raii::Queue pres_queue = nullptr;
+    vk::raii::Queue queue = nullptr;
 
+    vk::raii::SwapchainKHR swap_chain = nullptr;
+    vk::Extent2D swap_extent;
+    vk::SurfaceFormatKHR swap_format;
+    std::vector<vk::Image> swap_images;
 };

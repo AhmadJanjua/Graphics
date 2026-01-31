@@ -68,4 +68,7 @@ This document is mainly for me to keep track of important concepts.
 - these are instance level extensions that have been enabled when we created an instance of vulkan
 - additionally we must ensure to make a presentation queue to present to the surface
 
+# Swap Chains
+- no default framebuffer -> implemented via swap chain 
+- server specific gpus may not have display capabilities, hence no swap chain extension 
 
