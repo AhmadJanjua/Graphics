@@ -5,6 +5,8 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <ios>
 #include <iterator>
 #include <map>
 #include <stdexcept>
@@ -100,6 +102,23 @@ vk::Extent2D pickSwapExtent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR
     };
 }
 
+std::vector<char> readFile(const std::string &filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename);
+    }
+
+    std::vector<char> buffer(file.tellg());
+    file.seekg(0, std::ios::beg);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    file.close();
+
+    return buffer;
+}
+
+
+
 
 // ----- PUBLIC
 void Renderer::run() {
@@ -138,6 +157,7 @@ void Renderer::initVulkan() {
     createLogicalDevice();
     createSwapChain();
     createImageView();
+    createGfxPipeline();
 }
 
 void Renderer::createInstance() {
@@ -273,7 +293,6 @@ void Renderer::pickPhysicalDevice() {
 
     for (auto &device : devices) {
         auto properties = device.getProperties();
-        auto features = device.getFeatures();
         auto extensions = device.enumerateDeviceExtensionProperties();
         auto queue_families = device.getQueueFamilyProperties();
         uint32_t score = 0;
@@ -285,8 +304,7 @@ void Renderer::pickPhysicalDevice() {
         score += properties.limits.maxImageDimension2D;
 
         // --- Compatibility
-        if (!features.geometryShader) score = 0;
-        if (properties.apiVersion < VK_API_VERSION_1_4) score = 0;
+        if (properties.apiVersion < VK_API_VERSION_1_4) continue;
 
         if (std::ranges::none_of(
             queue_families,
@@ -294,8 +312,9 @@ void Renderer::pickPhysicalDevice() {
                 return (family.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0);
             })
         ) {
-            score = 0;
+            continue;
         }
+
         for (auto &required : device_extensions) {
             if (std::ranges::none_of(
                 extensions,
@@ -307,6 +326,20 @@ void Renderer::pickPhysicalDevice() {
                 break;
             }
         }
+        if (score == 0) continue;
+
+        auto features = device.template getFeatures2<
+            vk::PhysicalDeviceFeatures2,
+            vk::PhysicalDeviceVulkan11Features,
+            vk::PhysicalDeviceVulkan13Features,
+            vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        >();
+
+        if (!features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters ||
+            !features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering ||
+            !features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState) {
+            continue;
+        }
 
         if (ENABLE_VALIDATION) {
             std::cerr
@@ -314,8 +347,6 @@ void Renderer::pickPhysicalDevice() {
                 << "\tScore: " << score
                 << std::endl;
         }
-
-        if (score == 0) continue;
 
         scored_devices.insert(std::make_pair(score, device));       
     }
@@ -351,10 +382,12 @@ void Renderer::createLogicalDevice() {
 
     vk::StructureChain<
         vk::PhysicalDeviceFeatures2,
+        vk::PhysicalDeviceVulkan11Features,
         vk::PhysicalDeviceVulkan13Features,
         vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
     feature_chain = {
         {},
+        {.shaderDrawParameters = true},
 		{.dynamicRendering = true},
 		{.extendedDynamicState = true}
 	};
@@ -420,6 +453,34 @@ void Renderer::createImageView() {
 		view_info.image = image;
 		swap_image_views.emplace_back(logical_device, view_info);
 	}
+}
+
+[[nodiscard]] vk::raii::ShaderModule Renderer::createShaderModule(const std::vector<char> &code) const {
+    vk::ShaderModuleCreateInfo info {
+        .codeSize = code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t *>(code.data())
+    };
+
+    vk::raii::ShaderModule shader_module{logical_device, info};
+
+    return shader_module;
+}
+
+void Renderer::createGfxPipeline() {
+    vk::raii::ShaderModule shader_module = createShaderModule(readFile("shaders/slang.spv"));
+
+    vk::PipelineShaderStageCreateInfo vert_stage_info {
+        .stage = vk::ShaderStageFlagBits::eVertex,
+        .module = shader_module,
+        .pName = "vertMain"
+    };
+    vk::PipelineShaderStageCreateInfo frag_stage_info {
+        .stage = vk::ShaderStageFlagBits::eFragment,
+        .module = shader_module,
+        .pName = "fragMain"
+    };
+
+    vk::PipelineShaderStageCreateInfo shaderStages[] = {vert_stage_info, frag_stage_info};
 }
 
 void Renderer::mainLoop() {

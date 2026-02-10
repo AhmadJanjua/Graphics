@@ -24,7 +24,7 @@ find_package (Vulkan 1.4.335 REQUIRED)
 find_package (tinyobjloader REQUIRED)
 find_package (tinygltf REQUIRED)
 find_package (KTX REQUIRED)
-find_package(stb REQUIRED)
+find_package (stb REQUIRED)
 set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 
@@ -93,7 +93,6 @@ else()
     )
 endif()
 
-
 # shader compilation tools
 add_executable (glslang::validator IMPORTED)
 find_program (
@@ -109,47 +108,26 @@ find_program(
     HINTS $ENV{VULKAN_SDK}/bin REQUIRED
 )
 
-
-function (add_shaders_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
-  set (SHADERS_DIR ${SHADER_CHAPTER_NAME}/shaders)
-  add_custom_command (
-    OUTPUT ${SHADERS_DIR}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
-    )
-  add_custom_command (
-    OUTPUT ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv
-    COMMAND glslang::validator
-    ARGS --target-env vulkan1.0 ${SHADER_SOURCES} --quiet
-    WORKING_DIRECTORY ${SHADERS_DIR}
-    DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
-    COMMENT "Compiling Shaders"
-    VERBATIM
-    )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/vert.spv)
-endfunction ()
-
 function (add_slang_shader_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
-  set (SHADERS_DIR ${SHADER_CHAPTER_NAME}/shaders)
-  file(GLOB HAS_COMPUTE ${CHAPTER_SHADER}.comp)
-  set (ENTRY_POINTS -entry vertMain -entry fragMain)
-  if(HAS_COMPUTE)
-    list(APPEND ENTRY_POINTS -entry compMain)
-  endif()
-  add_custom_command (
-          OUTPUT ${SHADERS_DIR}
-          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
-  )
-  add_custom_command (
-          OUTPUT  ${SHADERS_DIR}/slang.spv
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4+spvRayQueryKHR -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
-          WORKING_DIRECTORY ${SHADERS_DIR}
-          DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
-          COMMENT "Compiling Slang Shaders"
-          VERBATIM
-  )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
+    cmake_parse_arguments ("SHADER" "" "NAME" "SOURCES" ${ARGN})
+
+    set (SHADERS_DIR ${SHADER_NAME}/shaders)
+    set (ENTRY_POINTS -entry vertMain -entry fragMain)
+
+    add_custom_command (
+        OUTPUT ${SHADERS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+    )
+
+    add_custom_command (
+        OUTPUT  ${SHADERS_DIR}/slang.spv
+        COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+        WORKING_DIRECTORY ${SHADERS_DIR}
+        DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
+        COMMENT "Compiling Slang Shaders"
+        VERBATIM
+    )
+    add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
 endfunction()
 
 function (add_app TARGET_NAME)
@@ -168,7 +146,6 @@ function (add_app TARGET_NAME)
     if(ENABLE_CPP20_MODULE)
         target_compile_definitions(${TARGET_NAME} PRIVATE USE_CPP20_MODULES=1)
     endif()
-
     target_compile_definitions(${TARGET_NAME} PRIVATE VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS)
 
     if(WIN32 AND ${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
@@ -178,20 +155,11 @@ function (add_app TARGET_NAME)
 
     # shaders
     if (DEFINED APP_SHADER)
-        set (SHADER_TARGET ${TARGET_NAME}_shader)
-        file (GLOB SHADER_SOURCES
-            "${APP_SHADER}.frag"
-            "${APP_SHADER}.vert"
-            "${APP_SHADER}.comp"
-        )
-        add_shaders_target (${SHADER_TARGET} CHAPTER_NAME ${TARGET_NAME} SOURCES ${SHADER_SOURCES})
-        add_dependencies (${TARGET_NAME} ${SHADER_TARGET})
-
         set (SLANG_TARGET ${TARGET_NAME}_slang_shader)
         file (GLOB SHADER_SLANG_SOURCES "${APP_SHADER}.slang")
 
         if(SHADER_SLANG_SOURCES)
-            add_slang_shader_target (${SLANG_TARGET} CHAPTER_NAME ${TARGET_NAME} SOURCES ${SHADER_SLANG_SOURCES})
+            add_slang_shader_target (${SLANG_TARGET} NAME ${TARGET_NAME} SOURCES ${SHADER_SLANG_SOURCES})
             add_dependencies (${TARGET_NAME} ${SLANG_TARGET})
         endif()
     endif ()

@@ -33,7 +33,9 @@ private:
     void createLogicalDevice();
     void createSwapChain();
     void createImageView();
-
+    void createGfxPipeline();
+    [[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const;
+    
     void mainLoop();
     
     void cleanup();
